@@ -1,0 +1,19 @@
+name: Test KICS action PR comment
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: run kics Scan
+      uses: checkmarx/kics-github-action@v1.6
+      with:
+        path: 'terraform,my-other-sub-folder/Dockerfile'
+        fail_on: high,medium
+        output_path: myResults/
+    - name: display kics results
+      run: |
+        cat myResults/results.json
