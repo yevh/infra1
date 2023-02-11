@@ -4,7 +4,7 @@
 [![GitHub release](https://img.shields.io/github/release/tenable/KaiMonkey)](https://github.com/tenable/kaimonkey)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/tenable/KaiMonkey/pulls)
 
-KaiMonkey provides vulnerable infrastructure as code (IaC) to help explore and understand common cloud security threats exposed via IaC.dsa
+KaiMonkey provides vulnerable infrastructure as code (IaC) to help explore and understand common cloud security threats exposed via IaC.dsadas
 
 ## Introduction
 
