@@ -63,49 +63,6 @@ jobs:
           echo "findings<<EOF" >> "$GITHUB_OUTPUT"
           echo "$FINDINGS" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
-
-      - name: Comment PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
-        env:
-          CRITICAL: ${{ steps.process-results.outputs.critical }}
-          HIGH: ${{ steps.process-results.outputs.high }}
-          MEDIUM: ${{ steps.process-results.outputs.medium }}
-          LOW: ${{ steps.process-results.outputs.low }}
-          FINDINGS: ${{ steps.process-results.outputs.findings }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const total = parseInt(process.env.CRITICAL) + parseInt(process.env.HIGH) + 
-                         parseInt(process.env.MEDIUM) + parseInt(process.env.LOW);
-            
-            let icon = '✅';
-            if (process.env.CRITICAL > 0) icon = '🚨';
-            else if (process.env.HIGH > 0) icon = '⚠️';
-            else if (process.env.MEDIUM > 0 || process.env.LOW > 0) icon = '⚠️';
-            
-            const comment = `## Security Scan ${icon}\n
-Found **${total}** potential issues:
-- Critical: ${process.env.CRITICAL}
-- High: ${process.env.HIGH}
-- Medium: ${process.env.MEDIUM}
-- Low: ${process.env.LOW}
-
-<details>
-<summary>View Findings</summary>
-
-\`\`\`
-${process.env.FINDINGS}
-\`\`\`
-</details>`;
-            
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-
       - name: Check for critical issues
         if: steps.process-results.outputs.critical > 0
         run: exit 1
