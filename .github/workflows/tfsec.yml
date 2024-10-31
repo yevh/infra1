@@ -1,0 +1,16 @@
+name: tfsec
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+jobs:
+  tfsec:
+    name: tfsec
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 #v4.2.1
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 #v1.0.3
