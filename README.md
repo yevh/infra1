@@ -1,4 +1,4 @@
-# KaiMonkey - Vulnerable Terraform Infrastructure
+# KaiMonkey - Vulnerable Terraform Infrastructure 
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202-blue)](https://github.com/tenable/KaiMonkey/blob/master/LICENSE)
 [![GitHub release](https://img.shields.io/github/release/tenable/KaiMonkey)](https://github.com/tenable/kaimonkey)
