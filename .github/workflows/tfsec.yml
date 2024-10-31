@@ -1,4 +1,5 @@
-name: tfsec
+name: tfsec Security Scan
+
 on:
   push:
     branches:
@@ -11,98 +12,137 @@ permissions:
 
 jobs:
   tfsec:
-    name: tfsec
+    name: Run tfsec Security Scan
     runs-on: ubuntu-latest
+
     steps:
-      - name: Clone repo
+      # 1. Checkout the repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 2. Install tfsec
       - name: Install tfsec
         shell: bash {0}
         run: |
           mkdir -p $HOME/.local/bin
           curl -sSfL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash -s -- -b $HOME/.local/bin
 
+      # 3. Add tfsec to PATH
       - name: Add tfsec to PATH
         shell: bash {0}
         run: |
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      # 4. Run tfsec and save output
       - name: Run tfsec
         id: tfsec
         continue-on-error: true
         shell: bash {0}
         run: |
-          # Run tfsec and save output to a file in JSON format
           tfsec . --format json > tfsec_output.json
-          # Display the output in the logs
           cat tfsec_output.json
 
-      - name: Check for Issues and Output Detailed Findings
+      # 5. Check for Issues and Prepare Summary
+      - name: Check for Issues and Prepare Summary
         if: always()
         id: check
         shell: bash {0}
         run: |
-          # Prevent the script from exiting on errors
-          set +e
-          
+          set +e  # Continue script even if a command fails
+
           if [ -f tfsec_output.json ]; then
-            # Calculate issue counts
+            # Extract counts
             CRITICAL_COUNT=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec_output.json)
             HIGH_COUNT=$(jq '[.results[] | select(.severity=="HIGH")] | length' tfsec_output.json)
             MEDIUM_COUNT=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec_output.json)
             LOW_COUNT=$(jq '[.results[] | select(.severity=="LOW")] | length' tfsec_output.json)
             TOTAL_ISSUES=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
-            
-            if [ "$TOTAL_ISSUES" -gt 0 ]; then
-              echo "🚨 Issues found!"
-              echo "Total issues: $TOTAL_ISSUES (Critical: $CRITICAL_COUNT, High: $HIGH_COUNT, Medium: $MEDIUM_COUNT, Low: $LOW_COUNT)"
-              
-              # Create the Markdown summary
-              if [ "$TOTAL_ISSUES" -eq 0 ]; then
-                # No issues found
-                SUMMARY="tfsec Security Scan Results 🔒%0A%0A✅ **No security issues found!**%0A%0AFound **0** potential security issues:%0A%0A🔴 **Critical Severity:** 0%0A🟣 **High Severity:** 0%0A🟡 **Medium Severity:** 0%0A🟢 **Low Severity:** 0%0A%0ATop Findings%0A_View full scan results_"
-              else
-                # Issues found
-                SUMMARY="tfsec Security Scan Results 🔒%0A%0A🚨 **Issues found!**%0A%0ATotal issues: **$TOTAL_ISSUES** (Critical: **$CRITICAL_COUNT**, High: **$HIGH_COUNT**, Medium: **$MEDIUM_COUNT**, Low: **$LOW_COUNT**) %0A%0ATop Findings%0A_View full scan results_"
-              fi
-              
-              # Save the summary to an environment variable for use in the next step
-              echo "FINDINGS_SUMMARY=$SUMMARY" >> $GITHUB_ENV
 
-              echo "## Detailed Findings"
-              # Output detailed findings with error handling
-              jq -r '.results[] | "Severity: \(.severity // "N/A")\nRule ID: \(.rule_id // "N/A")\nLong ID: \(.long_id // "N/A")\nRule Description: \(.rule_description // "N/A")\nImpact: \(.impact // "N/A")\nResolution: \(.resolution // "N/A")\nLinks: \(.links | join(", ") // "N/A")\nDescription: \(.description // "N/A")\nFile: \(.location.filename // "N/A"):\(.location.start_line // "N/A")-\(.location.end_line // "N/A")\n"' tfsec_output.json
+            if [ "$TOTAL_ISSUES" -gt 0 ]; then
+              # Construct the Markdown summary
+              SUMMARY="tfsec Security Scan Results 🔒
+
+              🚨 **Issues found!**
+              
+              **Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)
+              
+              **Top Findings**
+              _View full scan results_"
+
+              # Set the summary as an output variable
+              echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
+              echo "$SUMMARY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
             else
-              echo "No issues found."
-              # Save a message indicating no issues were found
-              echo "FINDINGS_SUMMARY=tfsec Security Scan Results 🔒%0A%0A✅ **No security issues found!**%0A%0AFound **0** potential security issues:%0A%0A🔴 **Critical Severity:** 0%0A🟣 **High Severity:** 0%0A🟡 **Medium Severity:** 0%0A🟢 **Low Severity:** 0%0A%0ATop Findings%0A_View full scan results_" >> $GITHUB_ENV
+              # No issues found
+              SUMMARY="tfsec Security Scan Results 🔒
+
+              ✅ **No security issues found!**
+              
+              **Found 0 potential security issues:**
+              
+              🔴 **Critical Severity:** 0  
+              🟣 **High Severity:** 0  
+              🟡 **Medium Severity:** 0  
+              🟢 **Low Severity:** 0
+              
+              **Top Findings**
+              _View full scan results_"
+
+              # Set the summary as an output variable
+              echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
+              echo "$SUMMARY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
             fi
-            
+
             # Determine if the job should fail
             if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
-              echo "Critical or High severity issues detected."
               echo "issues_found=true" >> $GITHUB_OUTPUT
             else
-              echo "No Critical or High severity issues detected."
               echo "issues_found=false" >> $GITHUB_OUTPUT
             fi
           else
-            echo "tfsec output not found."
+            # tfsec_output.json not found
+            SUMMARY="tfsec Security Scan Results 🔒
+
+            ⚠️ **tfsec output not found.**
+            
+            **Top Findings**
+            _View full scan results_"
+
+            # Set the summary as an output variable
+            echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
+            echo "$SUMMARY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+
+            # Indicate no issues found due to missing output
             echo "issues_found=false" >> $GITHUB_OUTPUT
-            echo "FINDINGS_SUMMARY=tfsec Security Scan Results 🔒%0A%0A⚠️ **tfsec output not found.**%0A%0ATop Findings%0A_View full scan results_" >> $GITHUB_ENV
+          fi
+          
+          # Notify in logs if the PR is from a fork
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "Note: Cannot post findings summary as a comment because the PR is from a fork."
           fi
 
-      - name: Comment findings summary on PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      # 6. Debug Step (Optional)
+      - name: Debug Findings Summary
+        if: github.event_name == 'pull_request'
+        run: echo "${{ steps.check.outputs.findings_summary }}"
+
+      # 7. Post Comment to PR
+      - name: Comment Findings Summary on PR
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         uses: peter-evans/create-or-update-comment@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ${{ env.FINDINGS_SUMMARY }}
+            ${{ steps.check.outputs.findings_summary }}
 
-      - name: Fail job if Critical or High issues found
+      # 8. Fail the Job if Critical or High Issues are Found
+      - name: Fail Job if Critical or High Issues Found
         if: steps.check.outputs.issues_found == 'true'
         run: exit 1
