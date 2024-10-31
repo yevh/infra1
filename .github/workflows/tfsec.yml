@@ -26,35 +26,53 @@ jobs:
         id: process-results
         shell: bash
         run: |
-          # Save tfsec output to a file
-          echo "${{ steps.tfsec.outputs.stdout }}" > tfsec-output.txt
+          # Extract the counts from tfsec output
+          RESULTS="${{ steps.tfsec.outputs.stdout }}"
+          echo "Full output: $RESULTS"
           
-          # Process the results section
-          RESULTS=$(cat tfsec-output.txt)
+          # Save full output for debugging
+          echo "$RESULTS" > tfsec-full-output.txt
           
-          # Extract counts using sed to find the specific lines and awk to get the numbers
-          CRITICAL=$(echo "$RESULTS" | grep -A6 "results$" | grep "critical" | awk '{print $2}')
-          HIGH=$(echo "$RESULTS" | grep -A6 "results$" | grep "high" | awk '{print $2}')
-          MEDIUM=$(echo "$RESULTS" | grep -A6 "results$" | grep "medium" | awk '{print $2}')
-          LOW=$(echo "$RESULTS" | grep -A6 "results$" | grep "low" | awk '{print $2}')
+          # Get the summary counts
+          COUNTS=$(echo "$RESULTS" | grep -A 5 "results$" || true)
+          echo "Counts section: $COUNTS"
           
-          # Get findings
-          FINDINGS=$(echo "$RESULTS" | grep -B2 -A10 "Result.*Security" | head -n 15)
+          # Extract individual counts
+          CRITICAL=$(echo "$COUNTS" | grep "critical" | awk '{print $2}' || echo "0")
+          HIGH=$(echo "$COUNTS" | grep "high" | awk '{print $2}' || echo "0")
+          MEDIUM=$(echo "$COUNTS" | grep "medium" | awk '{print $2}' || echo "0")
+          LOW=$(echo "$COUNTS" | grep "low" | awk '{print $2}' || echo "0")
           
-          # Export the values
-          echo "CRITICAL=${CRITICAL:-0}" >> $GITHUB_ENV
-          echo "HIGH=${HIGH:-0}" >> $GITHUB_ENV
-          echo "MEDIUM=${MEDIUM:-0}" >> $GITHUB_ENV
-          echo "LOW=${LOW:-0}" >> $GITHUB_ENV
+          # Debug output
+          echo "Extracted counts:"
+          echo "CRITICAL: $CRITICAL"
+          echo "HIGH: $HIGH"
+          echo "MEDIUM: $MEDIUM"
+          echo "LOW: $LOW"
           
-          # Export findings using EOF delimiter
-          echo 'FINDINGS<<EOF' >> $GITHUB_ENV
-          echo "$FINDINGS" >> $GITHUB_ENV
-          echo 'EOF' >> $GITHUB_ENV
+          # Set outputs
+          {
+            echo "critical=$CRITICAL"
+            echo "high=$HIGH"
+            echo "medium=$MEDIUM"
+            echo "low=$LOW"
+          } >> "$GITHUB_OUTPUT"
+          
+          # Get details of failures
+          FINDINGS=$(echo "$RESULTS" | grep -B1 -A5 "Result.*Security" || echo "No findings")
+          echo "findings<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$FINDINGS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Comment PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
+        env:
+          CRITICAL: ${{ steps.process-results.outputs.critical }}
+          HIGH: ${{ steps.process-results.outputs.high }}
+          MEDIUM: ${{ steps.process-results.outputs.medium }}
+          LOW: ${{ steps.process-results.outputs.low }}
+          FINDINGS: ${{ steps.process-results.outputs.findings }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
