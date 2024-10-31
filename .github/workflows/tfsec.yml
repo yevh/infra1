@@ -76,7 +76,16 @@ jobs:
         if: always()
         shell: bash {0}
         run: |
+          # Delay job failure until after summary is generated
           if [ "${CRITICAL:-0}" -gt 0 ]; then
             echo "🚨 Critical security issues found!"
-            exit 1
+            # Set a GitHub Actions output variable to indicate failure
+            echo "::set-output name=critical_issues_found::true"
+          else
+            echo "::set-output name=critical_issues_found::false"
           fi
+
+      # This step will fail the job if critical issues were found
+      - name: Fail job if critical issues found
+        if: steps.check.outputs.critical_issues_found == 'true'
+        run: exit 1
