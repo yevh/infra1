@@ -52,11 +52,16 @@ jobs:
               echo "🚨 Issues found!"
               echo "Total issues: $TOTAL_ISSUES (Critical: $CRITICAL_COUNT, High: $HIGH_COUNT, Medium: $MEDIUM_COUNT, Low: $LOW_COUNT)"
 
+              # Save the summary to an environment variable for use in the next step
+              echo "FINDINGS_SUMMARY=🚨 Issues found!%0A**Total issues:** $TOTAL_ISSUES (Critical: $CRITICAL_COUNT, High: $HIGH_COUNT, Medium: $MEDIUM_COUNT, Low: $LOW_COUNT)" >> $GITHUB_ENV
+
               echo "## Detailed Findings"
               # Output detailed findings with error handling
               jq -r '.results[] | "Severity: \(.severity // "N/A")\nRule ID: \(.rule_id // "N/A")\nLong ID: \(.long_id // "N/A")\nRule Description: \(.rule_description // "N/A")\nImpact: \(.impact // "N/A")\nResolution: \(.resolution // "N/A")\nLinks: \(.links | join(", ") // "N/A")\nDescription: \(.description // "N/A")\nFile: \(.location.filename // "N/A"):\(.location.start_line // "N/A")-\(.location.end_line // "N/A")\n"' tfsec_output.json
             else
               echo "No issues found."
+              # Save a message indicating no issues were found
+              echo "FINDINGS_SUMMARY=✅ No issues found." >> $GITHUB_ENV
             fi
             # Determine if the job should fail
             if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
@@ -69,7 +74,18 @@ jobs:
           else
             echo "tfsec output not found."
             echo "issues_found=false" >> $GITHUB_OUTPUT
+            echo "FINDINGS_SUMMARY=⚠️ tfsec output not found." >> $GITHUB_ENV
           fi
+
+      - name: Comment findings summary on PR
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ${{ env.FINDINGS_SUMMARY }}
 
       - name: Fail job if Critical or High issues found
         if: steps.check.outputs.issues_found == 'true'
