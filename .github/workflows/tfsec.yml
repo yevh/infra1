@@ -103,12 +103,7 @@ jobs:
             echo "Note: Cannot post findings summary as a comment because the PR is from a fork."
           fi
 
-      # 6. Debug Step (Optional)
-      - name: Debug Findings Summary
-        if: github.event_name == 'pull_request'
-        run: echo "${{ steps.check.outputs.findings_summary }}"
-
-      # 7. Post Comment to PR
+      # 6. Post Comment to PR
       - name: Comment Findings Summary on PR
         if: >
           github.event_name == 'pull_request' &&
@@ -121,7 +116,7 @@ jobs:
           body: |
             ${{ steps.check.outputs.findings_summary }}
 
-      # 8. Fail the Job if Critical or High Issues Found
+      # 7. Fail the Job if Critical or High Issues Found
       - name: Fail Job if Critical or High Issues Found
         if: steps.check.outputs.issues_found == 'true'
         run: exit 1
