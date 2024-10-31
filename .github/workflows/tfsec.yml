@@ -39,7 +39,9 @@ jobs:
         continue-on-error: true
         shell: bash {0}
         run: |
+          # Run tfsec and save output to a file in JSON format
           tfsec . --format json > tfsec_output.json
+          # Display the output in the logs
           cat tfsec_output.json
 
       # 5. Check for Issues and Prepare Summary
@@ -51,7 +53,7 @@ jobs:
           set +e  # Continue script even if a command fails
 
           if [ -f tfsec_output.json ]; then
-            # Extract counts
+            # Extract counts using jq
             CRITICAL_COUNT=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec_output.json)
             HIGH_COUNT=$(jq '[.results[] | select(.severity=="HIGH")] | length' tfsec_output.json)
             MEDIUM_COUNT=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec_output.json)
@@ -59,35 +61,17 @@ jobs:
             TOTAL_ISSUES=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
 
             if [ "$TOTAL_ISSUES" -gt 0 ]; then
-              # Construct the Markdown summary
-              SUMMARY="tfsec Security Scan Results 🔒
-
-              🚨 **Issues found!**
-              
-              **Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)
-              
-              **Top Findings**
-              _View full scan results_"
+              # Construct the Markdown summary for issues found
+              SUMMARY="🚨 **Issues found!**
+**Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)"
 
               # Set the summary as an output variable
               echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
               echo "$SUMMARY" >> $GITHUB_OUTPUT
               echo "EOF" >> $GITHUB_OUTPUT
             else
-              # No issues found
-              SUMMARY="tfsec Security Scan Results 🔒
-
-              ✅ **No security issues found!**
-              
-              **Found 0 potential security issues:**
-              
-              🔴 **Critical Severity:** 0  
-              🟣 **High Severity:** 0  
-              🟡 **Medium Severity:** 0  
-              🟢 **Low Severity:** 0
-              
-              **Top Findings**
-              _View full scan results_"
+              # Construct the Markdown summary for no issues found
+              SUMMARY="✅ **No security issues found!**"
 
               # Set the summary as an output variable
               echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
@@ -102,13 +86,8 @@ jobs:
               echo "issues_found=false" >> $GITHUB_OUTPUT
             fi
           else
-            # tfsec_output.json not found
-            SUMMARY="tfsec Security Scan Results 🔒
-
-            ⚠️ **tfsec output not found.**
-            
-            **Top Findings**
-            _View full scan results_"
+            # Handle missing tfsec_output.json
+            SUMMARY="⚠️ **tfsec output not found.**"
 
             # Set the summary as an output variable
             echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
@@ -118,7 +97,7 @@ jobs:
             # Indicate no issues found due to missing output
             echo "issues_found=false" >> $GITHUB_OUTPUT
           fi
-          
+
           # Notify in logs if the PR is from a fork
           if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
             echo "Note: Cannot post findings summary as a comment because the PR is from a fork."
@@ -142,7 +121,7 @@ jobs:
           body: |
             ${{ steps.check.outputs.findings_summary }}
 
-      # 8. Fail the Job if Critical or High Issues are Found
+      # 8. Fail the Job if Critical or High Issues Found
       - name: Fail Job if Critical or High Issues Found
         if: steps.check.outputs.issues_found == 'true'
         run: exit 1
