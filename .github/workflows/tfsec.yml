@@ -5,12 +5,14 @@ on:
       - master
   pull_request:
 
+permissions:
+  issues: write       # Allows the workflow to create and update issue comments
+  pull-requests: write # Allows the workflow to create and update PR comments
+
 jobs:
   tfsec:
     name: tfsec
     runs-on: ubuntu-latest
-    env:
-      IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - name: Clone repo
         uses: actions/checkout@v4
@@ -31,9 +33,7 @@ jobs:
         continue-on-error: true
         shell: bash {0}
         run: |
-          # Run tfsec and save output to a file in JSON format
           tfsec . --format json > tfsec_output.json
-          # Display the output in the logs
           cat tfsec_output.json
 
       - name: Check for Issues and Output Detailed Findings
@@ -77,11 +77,6 @@ jobs:
             echo "tfsec output not found."
             echo "issues_found=false" >> $GITHUB_OUTPUT
             echo "FINDINGS_SUMMARY=⚠️ tfsec output not found." >> $GITHUB_ENV
-          fi
-
-          # Notify if the PR is from a fork
-          if [ "$IS_FORK" = "true" ]; then
-            echo "Note: Cannot post findings summary as a comment because the PR is from a fork."
           fi
 
       - name: Comment findings summary on PR
