@@ -14,7 +14,7 @@ The project can help you get familiar with IaC security issues and verify that y
 
 To learn more about the security risks in KaiMonkey, you can leverage [Terrascan](https://github.com/tenable/terrascan), our open-source tool to detect compliance and security violations before provisioning the infrastructure. You can also use the [Tenable.cs](https://www.tenable.com/products/tenable-cs/evaluate) platform for an experience that extends beyond the command line with a SaaS console and pre-built integrations into your source code repositories, ticketing systems, CI/CD pipelines, etc.
 
-## Where to get help
+## Where to get help 
 
 * To learn more about Terrascan's features and capabilities, see the documentation portal: https://runterrascan.io
 
