@@ -48,17 +48,16 @@ jobs:
               echo "Total issues: $TOTAL_ISSUES (Critical: $CRITICAL_COUNT, High: $HIGH_COUNT, Medium: $MEDIUM_COUNT, Low: $LOW_COUNT)"
               
               echo "## Detailed Findings"
-              jq -r '.results[] | "
-                Severity: \(.severity)
-                Rule ID: \(.rule_id)
-                Long ID: \(.long_id)
-                Rule Description: \(.rule_description)
-                Impact: \(.impact)
-                Resolution: \(.resolution)
-                Links: \(.links | join(\", \"))
-                Description: \(.description)
-                File: \(.location.filename):\(.location.start_line)-\(.location.end_line)
-                "' tfsec_output.json
+              jq -r '.results[] | "Severity: \(.severity)
+              Rule ID: \(.rule_id)
+              Long ID: \(.long_id)
+              Rule Description: \(.rule_description)
+              Impact: \(.impact)
+              Resolution: \(.resolution)
+              Links: \(.links | join(", "))
+              Description: \(.description)
+              File: \(.location.filename):\(.location.start_line)-\(.location.end_line)
+              "' tfsec_output.json
             else
               echo "No issues found."
             fi
