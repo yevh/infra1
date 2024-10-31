@@ -4,13 +4,108 @@ on:
     branches:
       - master
   pull_request:
+
 jobs:
   tfsec:
     name: tfsec
     runs-on: ubuntu-latest
-
+    permissions:
+      pull-requests: write
+      contents: read
+      issues: write
     steps:
       - name: Clone repo
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 #v4.2.1
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 #v1.0.3
+        uses: actions/checkout@v4
+
+      - name: Run tfsec with output capturing
+        id: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          format: json
+        continue-on-error: true
+
+      - name: Save tfsec output
+        if: always()
+        run: |
+          echo "${{ steps.tfsec.outputs.stdout }}" > tfsec-output.json
+
+      - name: Process tfsec results
+        if: always()
+        id: process-results
+        run: |
+          if [ -f tfsec-output.json ]; then
+            echo "Processing tfsec results..."
+            
+            # Count total issues by severity
+            CRITICAL=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec-output.json || echo "0")
+            HIGH=$(jq '[.results[] | select(.severity=="HIGH")] | length' tfsec-output.json || echo "0")
+            MEDIUM=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec-output.json || echo "0")
+            LOW=$(jq '[.results[] | select(.severity=="LOW")] | length' tfsec-output.json || echo "0")
+            
+            # Get top 5 issues with details
+            DETAILS=$(jq -r '.results[:5] | map("- **[\(.severity)]** \(.description) in `\(.location.filename)` (line \(.location.start_line))") | .[]' tfsec-output.json || echo "")
+            
+            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+            echo "high=$HIGH" >> $GITHUB_OUTPUT
+            echo "medium=$MEDIUM" >> $GITHUB_OUTPUT
+            echo "low=$LOW" >> $GITHUB_OUTPUT
+            echo "details<<EOF" >> $GITHUB_OUTPUT
+            echo "$DETAILS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "No tfsec output file found"
+            echo "critical=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
+            echo "medium=0" >> $GITHUB_OUTPUT
+            echo "low=0" >> $GITHUB_OUTPUT
+            echo "details=No detailed findings available" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        env:
+          CRITICAL: ${{ steps.process-results.outputs.critical }}
+          HIGH: ${{ steps.process-results.outputs.high }}
+          MEDIUM: ${{ steps.process-results.outputs.medium }}
+          LOW: ${{ steps.process-results.outputs.low }}
+          DETAILS: ${{ steps.process-results.outputs.details }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const results = {
+              critical: parseInt(process.env.CRITICAL) || 0,
+              high: parseInt(process.env.HIGH) || 0,
+              medium: parseInt(process.env.MEDIUM) || 0,
+              low: parseInt(process.env.LOW) || 0
+            };
+            
+            const total = results.critical + results.high + results.medium + results.low;
+            
+            let status = '✅ No security issues found!';
+            if (results.critical > 0) status = '🚨 Critical security issues found!';
+            else if (results.high > 0) status = '⚠️ High severity issues found!';
+            else if (results.medium > 0) status = '⚠️ Medium severity issues found!';
+            else if (results.low > 0) status = '⚠️ Low severity issues found!';
+            
+            const summary = `## tfsec Security Scan Results 🔒
+
+            ${status}
+            
+            Found **${total}** potential security issues:
+            - 🔴 Critical Severity: ${results.critical}
+            - 🟣 High Severity: ${results.high}
+            - 🟡 Medium Severity: ${results.medium}
+            - 🟢 Low Severity: ${results.low}
+
+            ### Top Findings
+            ${process.env.DETAILS}
+            
+            [View full scan results](${context.payload.pull_request.html_url}/checks)`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
