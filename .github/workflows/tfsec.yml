@@ -63,8 +63,8 @@ jobs:
             if [ "$TOTAL_ISSUES" -gt 0 ]; then
               # Construct the Markdown summary for issues found
               SUMMARY="🚨 **Issues found!**
-              **Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)"
-              
+**Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)"
+
               # Set the summary as an output variable
               echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
               echo "$SUMMARY" >> $GITHUB_OUTPUT
@@ -72,7 +72,7 @@ jobs:
             else
               # Construct the Markdown summary for no issues found
               SUMMARY="✅ **No security issues found!**"
-              
+
               # Set the summary as an output variable
               echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
               echo "$SUMMARY" >> $GITHUB_OUTPUT
@@ -88,7 +88,7 @@ jobs:
           else
             # Handle missing tfsec_output.json
             SUMMARY="⚠️ **tfsec output not found.**"
-            
+
             # Set the summary as an output variable
             echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
             echo "$SUMMARY" >> $GITHUB_OUTPUT
@@ -116,7 +116,19 @@ jobs:
           body: |
             ${{ steps.check.outputs.findings_summary }}
 
-      # 7. Fail the Job if Critical or High Issues Found
+      # 7. Print Detailed Findings to Logs
+      - name: Print Detailed Findings
+        if: always()
+        shell: bash {0}
+        run: |
+          if [ -f tfsec_output.json ]; then
+            echo "## Detailed Findings"
+            jq -r '.results[] | "Severity: \(.severity)\nRule ID: \(.rule_id)\nDescription: \(.description)\nFile: \(.location.filename):\(.location.start_line)-\(.location.end_line)\n\n"' tfsec_output.json
+          else
+            echo "tfsec_output.json not found. No detailed findings to display."
+          fi
+
+      # 8. Fail the Job if Critical or High Issues Found
       - name: Fail Job if Critical or High Issues Found
         if: steps.check.outputs.issues_found == 'true'
         run: exit 1
