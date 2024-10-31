@@ -23,30 +23,38 @@ jobs:
         shell: bash
         run: |
           echo "# 🔒 tfsec Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract the numbers from tfsec output
+          STATS=$(echo '${{ steps.tfsec.outputs.stdout }}' | grep -A 7 "^results$")
+          PASSED=$(echo "$STATS" | grep "passed" | awk '{print $2}')
+          CRITICAL=$(echo "$STATS" | grep "critical" | awk '{print $2}')
+          HIGH=$(echo "$STATS" | grep "high" | awk '{print $2}')
+          MEDIUM=$(echo "$STATS" | grep "medium" | awk '{print $2}')
+          LOW=$(echo "$STATS" | grep "low" | awk '{print $2}')
+          
+          # Write summary
           echo "## Summary" >> $GITHUB_STEP_SUMMARY
-          
-          # Parse JSON and generate counts
-          echo '${{ steps.tfsec.outputs.results }}' > results.json
-          
-          CRITICAL=$(jq -r '.results[] | select(.severity=="CRITICAL") | .rule_id' results.json | wc -l)
-          HIGH=$(jq -r '.results[] | select(.severity=="HIGH") | .rule_id' results.json | wc -l)
-          MEDIUM=$(jq -r '.results[] | select(.severity=="MEDIUM") | .rule_id' results.json | wc -l)
-          LOW=$(jq -r '.results[] | select(.severity=="LOW") | .rule_id' results.json | wc -l)
-          
-          echo "Found issues:" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Passed: $PASSED" >> $GITHUB_STEP_SUMMARY
           echo "🚨 Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
           echo "⚠️ High: $HIGH" >> $GITHUB_STEP_SUMMARY
           echo "⚠️ Medium: $MEDIUM" >> $GITHUB_STEP_SUMMARY
           echo "ℹ️ Low: $LOW" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           
-          echo -e "\n## Details" >> $GITHUB_STEP_SUMMARY
-          jq -r '.results[] | "### [\(.severity)] \(.rule_id)\n**Location**: \(.location.filename):\(.location.start_line)\n**Description**: \(.description)\n"' results.json >> $GITHUB_STEP_SUMMARY
+          # Extract and format findings
+          echo "## Findings" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.tfsec.outputs.stdout }}' | sed -n '/Problem/,/timings/p' | grep -v "timings" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Set exit flag for critical issues
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "has_critical=true" >> $GITHUB_ENV
+          fi
 
       - name: Check for critical issues
-        if: success() || failure()
+        if: env.has_critical == 'true'
         run: |
-          CRITICAL=$(jq -r '.results[] | select(.severity=="CRITICAL") | .rule_id' results.json | wc -l)
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "🚨 Found $CRITICAL critical security issues!"
-            exit 1
-          fi
+          echo "🚨 Critical security issues found!"
+          exit 1
