@@ -24,36 +24,37 @@ jobs:
 
       - name: Process tfsec results
         id: process-results
+        shell: bash
         run: |
-          # Get the tfsec stdout
-          TFSEC_OUTPUT="${{ steps.tfsec.outputs.stdout }}"
+          # Save tfsec output to a file
+          echo "${{ steps.tfsec.outputs.stdout }}" > tfsec-output.txt
           
-          # Extract counts from the results section
-          CRITICAL=$(echo "$TFSEC_OUTPUT" | grep "critical" | awk '{print $2}')
-          HIGH=$(echo "$TFSEC_OUTPUT" | grep "high" | awk '{print $2}')
-          MEDIUM=$(echo "$TFSEC_OUTPUT" | grep "medium" | awk '{print $2}')
-          LOW=$(echo "$TFSEC_OUTPUT" | grep "low" | awk '{print $2}')
+          # Process the results section
+          RESULTS=$(cat tfsec-output.txt)
           
-          # Save the full output for findings details
-          echo "tfsec_output<<EOF" >> $GITHUB_OUTPUT
-          echo "$TFSEC_OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Extract counts using sed to find the specific lines and awk to get the numbers
+          CRITICAL=$(echo "$RESULTS" | grep -A6 "results$" | grep "critical" | awk '{print $2}')
+          HIGH=$(echo "$RESULTS" | grep -A6 "results$" | grep "high" | awk '{print $2}')
+          MEDIUM=$(echo "$RESULTS" | grep -A6 "results$" | grep "medium" | awk '{print $2}')
+          LOW=$(echo "$RESULTS" | grep -A6 "results$" | grep "low" | awk '{print $2}')
           
-          # Save the counts
-          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
-          echo "high=$HIGH" >> $GITHUB_OUTPUT
-          echo "medium=$MEDIUM" >> $GITHUB_OUTPUT
-          echo "low=$LOW" >> $GITHUB_OUTPUT
+          # Get findings
+          FINDINGS=$(echo "$RESULTS" | grep -B2 -A10 "Result.*Security" | head -n 15)
+          
+          # Export the values
+          echo "CRITICAL=${CRITICAL:-0}" >> $GITHUB_ENV
+          echo "HIGH=${HIGH:-0}" >> $GITHUB_ENV
+          echo "MEDIUM=${MEDIUM:-0}" >> $GITHUB_ENV
+          echo "LOW=${LOW:-0}" >> $GITHUB_ENV
+          
+          # Export findings using EOF delimiter
+          echo 'FINDINGS<<EOF' >> $GITHUB_ENV
+          echo "$FINDINGS" >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
 
       - name: Comment PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
-        env:
-          CRITICAL: ${{ steps.process-results.outputs.critical }}
-          HIGH: ${{ steps.process-results.outputs.high }}
-          MEDIUM: ${{ steps.process-results.outputs.medium }}
-          LOW: ${{ steps.process-results.outputs.low }}
-          TFSEC_OUTPUT: ${{ steps.process-results.outputs.tfsec_output }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -73,14 +74,6 @@ jobs:
             else if (results.low > 0) severity_icon = '⚠️ Low severity issues detected!';
             else severity_icon = '✅ No security issues found!';
             
-            // Extract findings details
-            const output = process.env.TFSEC_OUTPUT;
-            const findings = output
-              .split('Result')
-              .filter(section => section.includes('Security'))
-              .slice(0, 5)
-              .join('\nResult');
-            
             const summary = `## tfsec Security Scan Results 🔒
 
             ${severity_icon}
@@ -93,7 +86,7 @@ jobs:
 
             ### Sample Findings
             \`\`\`
-            ${findings}
+            ${process.env.FINDINGS || 'No findings details available'}
             \`\`\`
             
             [View full scan results](${context.payload.pull_request.html_url}/checks)`;
@@ -104,3 +97,7 @@ jobs:
               repo: context.repo.repo,
               body: summary
             });
+
+      - name: Check for failures
+        if: steps.tfsec.outputs.exit_code != '0'
+        run: exit 1
