@@ -31,10 +31,8 @@ jobs:
         run: |
           # Install jq for JSON parsing
           sudo apt-get update && sudo apt-get install -y jq
-
           # Debug: Output the tfsec results
           echo "tfsec results: ${{ steps.tfsec.outputs.results }}"
-
           # Check if results are empty
           if [ -z "${{ steps.tfsec.outputs.results }}" ]; then
             echo "No tfsec results found."
@@ -45,31 +43,25 @@ jobs:
             echo "findings=No findings details available" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
           # Get the tfsec results JSON
           echo "${{ steps.tfsec.outputs.results }}" > tfsec-results.json
-
           # Extract counts by severity
           CRITICAL=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec-results.json)
           HIGH=$(jq '[.results[] | select(.severity=="HIGH")] | length' tfsec-results.json)
           MEDIUM=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec-results.json)
           LOW=$(jq '[.results[] | select(.severity=="LOW")] | length' tfsec-results.json)
-
           # Debug output
           echo "CRITICAL: $CRITICAL"
           echo "HIGH: $HIGH"
           echo "MEDIUM: $MEDIUM"
           echo "LOW: $LOW"
-
           # Set outputs
           echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
           echo "high=$HIGH" >> "$GITHUB_OUTPUT"
           echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
           echo "low=$LOW" >> "$GITHUB_OUTPUT"
-
           # Get sample findings (up to 10)
           FINDINGS=$(jq -r '.results[] | "\(.severity): \(.rule_id) - \(.description)"' tfsec-results.json | head -n 10)
-
           # Set findings output
           echo "findings<<EOF" >> "$GITHUB_OUTPUT"
           echo "$FINDINGS" >> "$GITHUB_OUTPUT"
@@ -93,32 +85,16 @@ jobs:
               medium: parseInt(process.env.MEDIUM) || 0,
               low: parseInt(process.env.LOW) || 0
             };
-
             const total = results.critical + results.high + results.medium + results.low;
-
+            
             let severity_icon = '';
             if (results.critical > 0) severity_icon = '🚨 Critical security issues detected!';
             else if (results.high > 0) severity_icon = '⚠️ High severity issues detected!';
             else if (results.medium > 0) severity_icon = '⚠️ Medium severity issues detected!';
             else if (results.low > 0) severity_icon = '⚠️ Low severity issues detected!';
             else severity_icon = '✅ No security issues found!';
-
-            const summary = `## tfsec Security Scan Results 🔒
-
-${severity_icon}
-
-Found **${total}** potential security issues:
-- 🚨 Critical Severity: ${results.critical}
-- ⚠️ High Severity: ${results.high}
-- ⚠️ Medium Severity: ${results.medium}
-- ⚠️ Low Severity: ${results.low}
-
-### Sample Findings
-\`\`\`
-${process.env.FINDINGS || 'No findings details available'}
-\`\`\`
-
-[View full scan results](${context.payload.pull_request.html_url}/checks)`;
+            
+            const summary = `## tfsec Security Scan Results 🔒\n${severity_icon}\n\nFound **${total}** potential security issues:\n- 🚨 Critical Severity: ${results.critical}\n- ⚠️ High Severity: ${results.high}\n- ⚠️ Medium Severity: ${results.medium}\n- ⚠️ Low Severity: ${results.low}\n\n### Sample Findings\n\`\`\`\n${process.env.FINDINGS || 'No findings details available'}\n\`\`\`\n\n[View full scan results](${context.payload.pull_request.html_url}/checks)`;
 
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
