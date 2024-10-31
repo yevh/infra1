@@ -35,58 +35,33 @@ jobs:
           # Display the output in the logs
           cat tfsec_output.json
 
-      - name: Generate summary
-        if: always()
-        shell: bash {0}
-        run: |
-          echo "# 🔒 tfsec Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Check if tfsec_output.json exists
-          if [ -f tfsec_output.json ]; then
-            # Parse JSON output and calculate counts
-            CRITICAL=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec_output.json)
-            HIGH=$(jq '[.results[] | select(.severity=="HIGH")] | length' tfsec_output.json)
-            MEDIUM=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec_output.json)
-            LOW=$(jq '[.results[] | select(.severity=="LOW")] | length' tfsec_output.json)
-            PASSED="N/A"
-
-            # Write summary
-            echo "## Summary" >> $GITHUB_STEP_SUMMARY
-            echo "✅ Passed: $PASSED" >> $GITHUB_STEP_SUMMARY
-            echo "🚨 Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ High: $HIGH" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ Medium: $MEDIUM" >> $GITHUB_STEP_SUMMARY
-            echo "ℹ️ Low: $LOW" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
-            # Extract and format findings (limit to critical and high severity for brevity)
-            echo "## Findings" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            jq -r '.results[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "\(.severity): \(.description)\nFile: \(.location.filename):\(.location.start_line)\n"' tfsec_output.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-
-            # Export the CRITICAL variable for use in the next step
-            echo "CRITICAL=$CRITICAL" >> $GITHUB_ENV
-          else
-            echo "No tfsec output found."
-          fi
-
-      - name: Check for critical issues
+      - name: Check for Critical and High issues
         if: always()
         id: check
         shell: bash {0}
         run: |
-          # Delay job failure until after summary is generated
-          if [ "${CRITICAL:-0}" -gt 0 ]; then
-            echo "🚨 Critical security issues found!"
-            # Set an output variable using the new environment files method
-            echo "critical_issues_found=true" >> $GITHUB_OUTPUT
+          # Check for Critical and High severity issues
+          if [ -f tfsec_output.json ]; then
+            CRITICAL_HIGH_COUNT=$(jq '[.results[] | select(.severity=="CRITICAL" or .severity=="HIGH")] | length' tfsec_output.json)
+            if [ "$CRITICAL_HIGH_COUNT" -gt 0 ]; then
+              echo "🚨 Critical or High severity issues found!"
+
+              # Output the findings descriptions
+              echo "## Findings"
+              jq -r '.results[] | select(.severity=="CRITICAL" or .severity=="HIGH") | "\nSeverity: \(.severity)\nDescription: \(.description)\nFile: \(.location.filename):\(.location.start_line)\n"' tfsec_output.json
+
+              # Set an output variable to indicate that Critical or High issues were found
+              echo "issues_found=true" >> $GITHUB_OUTPUT
+            else
+              echo "No Critical or High severity issues found."
+              echo "issues_found=false" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "critical_issues_found=false" >> $GITHUB_OUTPUT
+            echo "tfsec output not found."
+            echo "issues_found=false" >> $GITHUB_OUTPUT
           fi
 
-      # This step will fail the job if critical issues were found
-      - name: Fail job if critical issues found
-        if: steps.check.outputs.critical_issues_found == 'true'
+      # Fail the job if Critical or High issues were found
+      - name: Fail job if Critical or High issues found
+        if: steps.check.outputs.issues_found == 'true'
         run: exit 1
