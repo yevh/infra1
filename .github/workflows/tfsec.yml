@@ -9,6 +9,8 @@ jobs:
   tfsec:
     name: tfsec
     runs-on: ubuntu-latest
+    env:
+      IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - name: Clone repo
         uses: actions/checkout@v4
@@ -77,8 +79,13 @@ jobs:
             echo "FINDINGS_SUMMARY=⚠️ tfsec output not found." >> $GITHUB_ENV
           fi
 
+          # Notify if the PR is from a fork
+          if [ "$IS_FORK" = "true" ]; then
+            echo "Note: Cannot post findings summary as a comment because the PR is from a fork."
+          fi
+
       - name: Comment findings summary on PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: peter-evans/create-or-update-comment@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
