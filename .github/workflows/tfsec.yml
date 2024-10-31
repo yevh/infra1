@@ -63,7 +63,7 @@ jobs:
             if [ "$TOTAL_ISSUES" -gt 0 ]; then
               # Construct the Markdown summary for issues found
               SUMMARY="🚨 **Issues found!**
-**Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)"
+              **Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)"
 
               # Set the summary as an output variable
               echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
