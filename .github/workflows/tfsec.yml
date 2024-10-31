@@ -2,7 +2,7 @@ name: tfsec
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
 
 jobs:
@@ -30,10 +30,10 @@ jobs:
         continue-on-error: true
         shell: bash {0}
         run: |
-          # Run tfsec and save output to a file
-          tfsec . --concise-output > tfsec_output.txt
+          # Run tfsec and save output to a file in JSON format
+          tfsec . --format json > tfsec_output.json
           # Display the output in the logs
-          cat tfsec_output.txt
+          cat tfsec_output.json
 
       - name: Generate summary
         if: always()
@@ -41,36 +41,37 @@ jobs:
         run: |
           echo "# 🔒 tfsec Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Read the tfsec output
-          TFSEC_OUTPUT=$(cat tfsec_output.txt)
-          
-          # Extract the numbers from tfsec output
-          STATS=$(echo "$TFSEC_OUTPUT" | grep -A 7 "^results$")
-          PASSED=$(echo "$STATS" | grep "passed" | awk '{print $2}')
-          CRITICAL=$(echo "$STATS" | grep "critical" | awk '{print $2}')
-          HIGH=$(echo "$STATS" | grep "high" | awk '{print $2}')
-          MEDIUM=$(echo "$STATS" | grep "medium" | awk '{print $2}')
-          LOW=$(echo "$STATS" | grep "low" | awk '{print $2}')
-          
-          # Write summary
-          echo "## Summary" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Passed: $PASSED" >> $GITHUB_STEP_SUMMARY
-          echo "🚨 Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
-          echo "⚠️ High: $HIGH" >> $GITHUB_STEP_SUMMARY
-          echo "⚠️ Medium: $MEDIUM" >> $GITHUB_STEP_SUMMARY
-          echo "ℹ️ Low: $LOW" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Extract and format findings (limit to critical and high severity for brevity)
-          echo "## Findings" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "$TFSEC_OUTPUT" | awk '/Problem/,/timings/' | grep -E "(CRITICAL|HIGH)" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          
-          # Set exit flag for critical issues
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "has_critical=true" >> $GITHUB_ENV
+
+          # Check if tfsec_output.json exists
+          if [ -f tfsec_output.json ]; then
+            # Parse JSON output
+            PASSED=$(jq '.summary.passed' tfsec_output.json)
+            CRITICAL=$(jq '.summary.critical' tfsec_output.json)
+            HIGH=$(jq '.summary.high' tfsec_output.json)
+            MEDIUM=$(jq '.summary.medium' tfsec_output.json)
+            LOW=$(jq '.summary.low' tfsec_output.json)
+
+            # Write summary
+            echo "## Summary" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Passed: $PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "🚨 Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ High: $HIGH" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Medium: $MEDIUM" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ Low: $LOW" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract and format findings (limit to critical and high severity for brevity)
+            echo "## Findings" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            jq -r '.results[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "\(.severity): \(.description) \nFile: \(.location.filename):\(.location.start_line)\n"' tfsec_output.json >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+            # Set exit flag for critical issues
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "has_critical=true" >> $GITHUB_ENV
+            fi
+          else
+            echo "No tfsec output found."
           fi
 
       - name: Check for critical issues
