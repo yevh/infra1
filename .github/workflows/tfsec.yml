@@ -9,10 +9,6 @@ jobs:
   tfsec:
     name: tfsec
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
-      issues: write
     steps:
       - name: Clone repo
         uses: actions/checkout@v4
@@ -20,49 +16,37 @@ jobs:
       - name: Run tfsec
         id: tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
-        with:
-          format: sarif
-          soft_fail: true
         continue-on-error: true
 
-      - name: Process tfsec results
-        id: process-results
+      - name: Generate summary
         if: success() || failure()
         shell: bash
         run: |
-          echo "### Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "# 🔒 tfsec Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Summary" >> $GITHUB_STEP_SUMMARY
           
-          # Get results counts using tfsec CLI output
-          CRITICAL=$(grep -c "\\[CRITICAL\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
-          HIGH=$(grep -c "\\[HIGH\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
-          MEDIUM=$(grep -c "\\[MEDIUM\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
-          LOW=$(grep -c "\\[LOW\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
+          # Parse JSON and generate counts
+          echo '${{ steps.tfsec.outputs.results }}' > results.json
           
-          # Create a summary section
+          CRITICAL=$(jq -r '.results[] | select(.severity=="CRITICAL") | .rule_id' results.json | wc -l)
+          HIGH=$(jq -r '.results[] | select(.severity=="HIGH") | .rule_id' results.json | wc -l)
+          MEDIUM=$(jq -r '.results[] | select(.severity=="MEDIUM") | .rule_id' results.json | wc -l)
+          LOW=$(jq -r '.results[] | select(.severity=="LOW") | .rule_id' results.json | wc -l)
+          
           echo "Found issues:" >> $GITHUB_STEP_SUMMARY
-          echo "- Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
-          echo "- High: $HIGH" >> $GITHUB_STEP_SUMMARY
-          echo "- Medium: $MEDIUM" >> $GITHUB_STEP_SUMMARY
-          echo "- Low: $LOW" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🚨 Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ High: $HIGH" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Medium: $MEDIUM" >> $GITHUB_STEP_SUMMARY
+          echo "ℹ️ Low: $LOW" >> $GITHUB_STEP_SUMMARY
           
-          # Extract and display findings
-          echo "### Findings" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          grep -E "\\[(CRITICAL|HIGH|MEDIUM|LOW)\\].*" <<< "${{ steps.tfsec.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY || echo "No findings"
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          
-          # Set outputs for PR comment
-          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
-          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
-          echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
-          echo "low=$LOW" >> "$GITHUB_OUTPUT"
-          
-          # Get findings for PR comment
-          FINDINGS=$(grep -E "\\[(CRITICAL|HIGH|MEDIUM|LOW)\\].*" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "No findings")
-          echo "findings<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$FINDINGS" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo -e "\n## Details" >> $GITHUB_STEP_SUMMARY
+          jq -r '.results[] | "### [\(.severity)] \(.rule_id)\n**Location**: \(.location.filename):\(.location.start_line)\n**Description**: \(.description)\n"' results.json >> $GITHUB_STEP_SUMMARY
+
       - name: Check for critical issues
-        if: steps.process-results.outputs.critical > 0
-        run: exit 1
+        if: success() || failure()
+        run: |
+          CRITICAL=$(jq -r '.results[] | select(.severity=="CRITICAL") | .rule_id' results.json | wc -l)
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "🚨 Found $CRITICAL critical security issues!"
+            exit 1
+          fi
