@@ -13,20 +13,34 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@v4
 
+      - name: Install tfsec
+        run: |
+          # Install tfsec
+          curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install.sh | bash
+
       - name: Run tfsec
         id: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
         continue-on-error: true
+        run: |
+          # Run tfsec and save output to a file
+          tfsec . > tfsec_output.txt
+          # Optionally, you can use --concise-output for shorter messages
+          # tfsec . --concise-output > tfsec_output.txt
+          # Display the output in the logs
+          cat tfsec_output.txt
 
       - name: Generate summary
-        if: success() || failure()
+        if: always()
         shell: bash
         run: |
           echo "# 🔒 tfsec Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
+          # Read the tfsec output
+          TFSEC_OUTPUT=$(cat tfsec_output.txt)
+          
           # Extract the numbers from tfsec output
-          STATS=$(echo '${{ steps.tfsec.outputs.stdout }}' | grep -A 7 "^results$")
+          STATS=$(echo "$TFSEC_OUTPUT" | grep -A 7 "^results$")
           PASSED=$(echo "$STATS" | grep "passed" | awk '{print $2}')
           CRITICAL=$(echo "$STATS" | grep "critical" | awk '{print $2}')
           HIGH=$(echo "$STATS" | grep "high" | awk '{print $2}')
@@ -42,10 +56,10 @@ jobs:
           echo "ℹ️ Low: $LOW" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Extract and format findings
+          # Extract and format findings (limit to critical and high severity for brevity)
           echo "## Findings" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo '${{ steps.tfsec.outputs.stdout }}' | sed -n '/Problem/,/timings/p' | grep -v "timings" >> $GITHUB_STEP_SUMMARY
+          echo "$TFSEC_OUTPUT" | awk '/Problem/,/timings/' | grep -E "(CRITICAL|HIGH)" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           
           # Set exit flag for critical issues
