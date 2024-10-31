@@ -19,7 +19,7 @@ jobs:
 
       - name: Run tfsec
         id: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.7
+        uses: aquasecurity/tfsec-action@v1.0.3
         with:
           format: json
           output_file: tfsec.json
