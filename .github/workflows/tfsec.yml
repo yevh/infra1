@@ -66,16 +66,17 @@ jobs:
             jq -r '.results[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "\(.severity): \(.description)\nFile: \(.location.filename):\(.location.start_line)\n"' tfsec_output.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
 
-            # Set exit flag for critical issues
-            if [ "$CRITICAL" -gt 0 ]; then
-              echo "has_critical=true" >> $GITHUB_ENV
-            fi
+            # Export the CRITICAL variable for use in the next step
+            echo "CRITICAL=$CRITICAL" >> $GITHUB_ENV
           else
             echo "No tfsec output found."
           fi
 
       - name: Check for critical issues
-        if: env.has_critical == 'true'
+        if: always()
+        shell: bash {0}
         run: |
-          echo "🚨 Critical security issues found!"
-          exit 1
+          if [ "${CRITICAL:-0}" -gt 0 ]; then
+            echo "🚨 Critical security issues found!"
+            exit 1
+          fi
