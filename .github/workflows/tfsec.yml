@@ -6,8 +6,8 @@ on:
   pull_request:
 
 permissions:
-  issues: write       # Allows the workflow to create and update issue comments
-  pull-requests: write # Allows the workflow to create and update PR comments
+  issues: write
+  pull-requests: write
 
 jobs:
   tfsec:
@@ -33,7 +33,9 @@ jobs:
         continue-on-error: true
         shell: bash {0}
         run: |
+          # Run tfsec and save output to a file in JSON format
           tfsec . --format json > tfsec_output.json
+          # Display the output in the logs
           cat tfsec_output.json
 
       - name: Check for Issues and Output Detailed Findings
@@ -43,6 +45,7 @@ jobs:
         run: |
           # Prevent the script from exiting on errors
           set +e
+          
           if [ -f tfsec_output.json ]; then
             # Calculate issue counts
             CRITICAL_COUNT=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec_output.json)
@@ -50,12 +53,22 @@ jobs:
             MEDIUM_COUNT=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec_output.json)
             LOW_COUNT=$(jq '[.results[] | select(.severity=="LOW")] | length' tfsec_output.json)
             TOTAL_ISSUES=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
+            
             if [ "$TOTAL_ISSUES" -gt 0 ]; then
               echo "🚨 Issues found!"
               echo "Total issues: $TOTAL_ISSUES (Critical: $CRITICAL_COUNT, High: $HIGH_COUNT, Medium: $MEDIUM_COUNT, Low: $LOW_COUNT)"
-
+              
+              # Create the Markdown summary
+              if [ "$TOTAL_ISSUES" -eq 0 ]; then
+                # No issues found
+                SUMMARY="tfsec Security Scan Results 🔒%0A%0A✅ **No security issues found!**%0A%0AFound **0** potential security issues:%0A%0A🔴 **Critical Severity:** 0%0A🟣 **High Severity:** 0%0A🟡 **Medium Severity:** 0%0A🟢 **Low Severity:** 0%0A%0ATop Findings%0A_View full scan results_"
+              else
+                # Issues found
+                SUMMARY="tfsec Security Scan Results 🔒%0A%0A🚨 **Issues found!**%0A%0ATotal issues: **$TOTAL_ISSUES** (Critical: **$CRITICAL_COUNT**, High: **$HIGH_COUNT**, Medium: **$MEDIUM_COUNT**, Low: **$LOW_COUNT**) %0A%0ATop Findings%0A_View full scan results_"
+              fi
+              
               # Save the summary to an environment variable for use in the next step
-              echo "FINDINGS_SUMMARY=🚨 Issues found!%0A**Total issues:** $TOTAL_ISSUES (Critical: $CRITICAL_COUNT, High: $HIGH_COUNT, Medium: $MEDIUM_COUNT, Low: $LOW_COUNT)" >> $GITHUB_ENV
+              echo "FINDINGS_SUMMARY=$SUMMARY" >> $GITHUB_ENV
 
               echo "## Detailed Findings"
               # Output detailed findings with error handling
@@ -63,8 +76,9 @@ jobs:
             else
               echo "No issues found."
               # Save a message indicating no issues were found
-              echo "FINDINGS_SUMMARY=✅ No issues found." >> $GITHUB_ENV
+              echo "FINDINGS_SUMMARY=tfsec Security Scan Results 🔒%0A%0A✅ **No security issues found!**%0A%0AFound **0** potential security issues:%0A%0A🔴 **Critical Severity:** 0%0A🟣 **High Severity:** 0%0A🟡 **Medium Severity:** 0%0A🟢 **Low Severity:** 0%0A%0ATop Findings%0A_View full scan results_" >> $GITHUB_ENV
             fi
+            
             # Determine if the job should fail
             if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
               echo "Critical or High severity issues detected."
@@ -76,7 +90,7 @@ jobs:
           else
             echo "tfsec output not found."
             echo "issues_found=false" >> $GITHUB_OUTPUT
-            echo "FINDINGS_SUMMARY=⚠️ tfsec output not found." >> $GITHUB_ENV
+            echo "FINDINGS_SUMMARY=tfsec Security Scan Results 🔒%0A%0A⚠️ **tfsec output not found.**%0A%0ATop Findings%0A_View full scan results_" >> $GITHUB_ENV
           fi
 
       - name: Comment findings summary on PR
