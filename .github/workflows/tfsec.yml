@@ -19,10 +19,10 @@ jobs:
 
       - name: Run tfsec
         id: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+        uses: aquasecurity/tfsec-action@v1.0.7
         with:
-          # Ensure tfsec outputs results in JSON format
           format: json
+          output_file: tfsec.json
         continue-on-error: true
 
       - name: Process tfsec results
@@ -31,6 +31,20 @@ jobs:
         run: |
           # Install jq for JSON parsing
           sudo apt-get update && sudo apt-get install -y jq
+
+          # Debug: Output the tfsec results
+          echo "tfsec results: ${{ steps.tfsec.outputs.results }}"
+
+          # Check if results are empty
+          if [ -z "${{ steps.tfsec.outputs.results }}" ]; then
+            echo "No tfsec results found."
+            echo "critical=0" >> "$GITHUB_OUTPUT"
+            echo "high=0" >> "$GITHUB_OUTPUT"
+            echo "medium=0" >> "$GITHUB_OUTPUT"
+            echo "low=0" >> "$GITHUB_OUTPUT"
+            echo "findings=No findings details available" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # Get the tfsec results JSON
           echo "${{ steps.tfsec.outputs.results }}" > tfsec-results.json
@@ -53,7 +67,7 @@ jobs:
           echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
           echo "low=$LOW" >> "$GITHUB_OUTPUT"
 
-          # Get sample findings
+          # Get sample findings (up to 10)
           FINDINGS=$(jq -r '.results[] | "\(.severity): \(.rule_id) - \(.description)"' tfsec-results.json | head -n 10)
 
           # Set findings output
@@ -91,20 +105,20 @@ jobs:
 
             const summary = `## tfsec Security Scan Results 🔒
 
-            ${severity_icon}
+${severity_icon}
 
-            Found **${total}** potential security issues:
-            - 🚨 Critical Severity: ${results.critical}
-            - ⚠️ High Severity: ${results.high}
-            - ⚠️ Medium Severity: ${results.medium}
-            - ⚠️ Low Severity: ${results.low}
+Found **${total}** potential security issues:
+- 🚨 Critical Severity: ${results.critical}
+- ⚠️ High Severity: ${results.high}
+- ⚠️ Medium Severity: ${results.medium}
+- ⚠️ Low Severity: ${results.low}
 
-            ### Sample Findings
-            \`\`\`
-            ${process.env.FINDINGS || 'No findings details available'}
-            \`\`\`
+### Sample Findings
+\`\`\`
+${process.env.FINDINGS || 'No findings details available'}
+\`\`\`
 
-            [View full scan results](${context.payload.pull_request.html_url}/checks)`;
+[View full scan results](${context.payload.pull_request.html_url}/checks)`;
 
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
