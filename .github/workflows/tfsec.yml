@@ -20,46 +20,43 @@ jobs:
       - name: Run tfsec
         id: tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          # Ensure tfsec outputs results in JSON format
+          format: json
         continue-on-error: true
 
       - name: Process tfsec results
         id: process-results
         shell: bash
         run: |
-          # Extract the counts from tfsec output
-          RESULTS="${{ steps.tfsec.outputs.stdout }}"
-          echo "Full output: $RESULTS"
-          
-          # Save full output for debugging
-          echo "$RESULTS" > tfsec-full-output.txt
-          
-          # Get the summary counts
-          COUNTS=$(echo "$RESULTS" | grep -A 5 "results$" || true)
-          echo "Counts section: $COUNTS"
-          
-          # Extract individual counts
-          CRITICAL=$(echo "$COUNTS" | grep "critical" | awk '{print $2}' || echo "0")
-          HIGH=$(echo "$COUNTS" | grep "high" | awk '{print $2}' || echo "0")
-          MEDIUM=$(echo "$COUNTS" | grep "medium" | awk '{print $2}' || echo "0")
-          LOW=$(echo "$COUNTS" | grep "low" | awk '{print $2}' || echo "0")
-          
+          # Install jq for JSON parsing
+          sudo apt-get update && sudo apt-get install -y jq
+
+          # Get the tfsec results JSON
+          echo "${{ steps.tfsec.outputs.results }}" > tfsec-results.json
+
+          # Extract counts by severity
+          CRITICAL=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec-results.json)
+          HIGH=$(jq '[.results[] | select(.severity=="HIGH")] | length' tfsec-results.json)
+          MEDIUM=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec-results.json)
+          LOW=$(jq '[.results[] | select(.severity=="LOW")] | length' tfsec-results.json)
+
           # Debug output
-          echo "Extracted counts:"
           echo "CRITICAL: $CRITICAL"
           echo "HIGH: $HIGH"
           echo "MEDIUM: $MEDIUM"
           echo "LOW: $LOW"
-          
+
           # Set outputs
-          {
-            echo "critical=$CRITICAL"
-            echo "high=$HIGH"
-            echo "medium=$MEDIUM"
-            echo "low=$LOW"
-          } >> "$GITHUB_OUTPUT"
-          
-          # Get details of failures
-          FINDINGS=$(echo "$RESULTS" | grep -B1 -A5 "Result.*Security" || echo "No findings")
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+          echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
+          echo "low=$LOW" >> "$GITHUB_OUTPUT"
+
+          # Get sample findings
+          FINDINGS=$(jq -r '.results[] | "\(.severity): \(.rule_id) - \(.description)"' tfsec-results.json | head -n 10)
+
+          # Set findings output
           echo "findings<<EOF" >> "$GITHUB_OUTPUT"
           echo "$FINDINGS" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
@@ -82,33 +79,33 @@ jobs:
               medium: parseInt(process.env.MEDIUM) || 0,
               low: parseInt(process.env.LOW) || 0
             };
-            
+
             const total = results.critical + results.high + results.medium + results.low;
-            
+
             let severity_icon = '';
             if (results.critical > 0) severity_icon = '🚨 Critical security issues detected!';
             else if (results.high > 0) severity_icon = '⚠️ High severity issues detected!';
             else if (results.medium > 0) severity_icon = '⚠️ Medium severity issues detected!';
             else if (results.low > 0) severity_icon = '⚠️ Low severity issues detected!';
             else severity_icon = '✅ No security issues found!';
-            
+
             const summary = `## tfsec Security Scan Results 🔒
 
             ${severity_icon}
 
             Found **${total}** potential security issues:
-            - 🔴 Critical Severity: ${results.critical}
-            - 🟣 High Severity: ${results.high}
-            - 🟡 Medium Severity: ${results.medium}
-            - 🟢 Low Severity: ${results.low}
+            - 🚨 Critical Severity: ${results.critical}
+            - ⚠️ High Severity: ${results.high}
+            - ⚠️ Medium Severity: ${results.medium}
+            - ⚠️ Low Severity: ${results.low}
 
             ### Sample Findings
             \`\`\`
             ${process.env.FINDINGS || 'No findings details available'}
             \`\`\`
-            
+
             [View full scan results](${context.payload.pull_request.html_url}/checks)`;
-            
+
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
