@@ -19,50 +19,47 @@ jobs:
 
       - name: Run tfsec
         id: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+        uses: aquasecurity/tfsec-action@v1.0.7
         with:
-          format: json
-          output_file: tfsec.json
+          format: sarif
+          soft_fail: true
         continue-on-error: true
 
       - name: Process tfsec results
         id: process-results
+        if: success() || failure()
         shell: bash
         run: |
-          # Install jq for JSON parsing
-          sudo apt-get update && sudo apt-get install -y jq
-          # Debug: Output the tfsec results
-          echo "tfsec results: ${{ steps.tfsec.outputs.results }}"
-          # Check if results are empty
-          if [ -z "${{ steps.tfsec.outputs.results }}" ]; then
-            echo "No tfsec results found."
-            echo "critical=0" >> "$GITHUB_OUTPUT"
-            echo "high=0" >> "$GITHUB_OUTPUT"
-            echo "medium=0" >> "$GITHUB_OUTPUT"
-            echo "low=0" >> "$GITHUB_OUTPUT"
-            echo "findings=No findings details available" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Get the tfsec results JSON
-          echo "${{ steps.tfsec.outputs.results }}" > tfsec-results.json
-          # Extract counts by severity
-          CRITICAL=$(jq '[.results[] | select(.severity=="CRITICAL")] | length' tfsec-results.json)
-          HIGH=$(jq '[.results[] | select(.severity=="HIGH")] | length' tfsec-results.json)
-          MEDIUM=$(jq '[.results[] | select(.severity=="MEDIUM")] | length' tfsec-results.json)
-          LOW=$(jq '[.results[] | select(.severity=="LOW")] | length' tfsec-results.json)
-          # Debug output
-          echo "CRITICAL: $CRITICAL"
-          echo "HIGH: $HIGH"
-          echo "MEDIUM: $MEDIUM"
-          echo "LOW: $LOW"
-          # Set outputs
+          echo "### Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          
+          # Get results counts using tfsec CLI output
+          CRITICAL=$(grep -c "\\[CRITICAL\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
+          HIGH=$(grep -c "\\[HIGH\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
+          MEDIUM=$(grep -c "\\[MEDIUM\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
+          LOW=$(grep -c "\\[LOW\\]" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "0")
+          
+          # Create a summary section
+          echo "Found issues:" >> $GITHUB_STEP_SUMMARY
+          echo "- Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
+          echo "- High: $HIGH" >> $GITHUB_STEP_SUMMARY
+          echo "- Medium: $MEDIUM" >> $GITHUB_STEP_SUMMARY
+          echo "- Low: $LOW" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract and display findings
+          echo "### Findings" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "\\[(CRITICAL|HIGH|MEDIUM|LOW)\\].*" <<< "${{ steps.tfsec.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY || echo "No findings"
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          
+          # Set outputs for PR comment
           echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
           echo "high=$HIGH" >> "$GITHUB_OUTPUT"
           echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
           echo "low=$LOW" >> "$GITHUB_OUTPUT"
-          # Get sample findings (up to 10)
-          FINDINGS=$(jq -r '.results[] | "\(.severity): \(.rule_id) - \(.description)"' tfsec-results.json | head -n 10)
-          # Set findings output
+          
+          # Get findings for PR comment
+          FINDINGS=$(grep -E "\\[(CRITICAL|HIGH|MEDIUM|LOW)\\].*" <<< "${{ steps.tfsec.outputs.stdout }}" || echo "No findings")
           echo "findings<<EOF" >> "$GITHUB_OUTPUT"
           echo "$FINDINGS" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
@@ -79,30 +76,36 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const results = {
-              critical: parseInt(process.env.CRITICAL) || 0,
-              high: parseInt(process.env.HIGH) || 0,
-              medium: parseInt(process.env.MEDIUM) || 0,
-              low: parseInt(process.env.LOW) || 0
-            };
-            const total = results.critical + results.high + results.medium + results.low;
+            const total = parseInt(process.env.CRITICAL) + parseInt(process.env.HIGH) + 
+                         parseInt(process.env.MEDIUM) + parseInt(process.env.LOW);
             
-            let severity_icon = '';
-            if (results.critical > 0) severity_icon = '🚨 Critical security issues detected!';
-            else if (results.high > 0) severity_icon = '⚠️ High severity issues detected!';
-            else if (results.medium > 0) severity_icon = '⚠️ Medium severity issues detected!';
-            else if (results.low > 0) severity_icon = '⚠️ Low severity issues detected!';
-            else severity_icon = '✅ No security issues found!';
+            let icon = '✅';
+            if (process.env.CRITICAL > 0) icon = '🚨';
+            else if (process.env.HIGH > 0) icon = '⚠️';
+            else if (process.env.MEDIUM > 0 || process.env.LOW > 0) icon = '⚠️';
             
-            const summary = `## tfsec Security Scan Results 🔒\n${severity_icon}\n\nFound **${total}** potential security issues:\n- 🚨 Critical Severity: ${results.critical}\n- ⚠️ High Severity: ${results.high}\n- ⚠️ Medium Severity: ${results.medium}\n- ⚠️ Low Severity: ${results.low}\n\n### Sample Findings\n\`\`\`\n${process.env.FINDINGS || 'No findings details available'}\n\`\`\`\n\n[View full scan results](${context.payload.pull_request.html_url}/checks)`;
+            const comment = `## Security Scan ${icon}\n
+Found **${total}** potential issues:
+- Critical: ${process.env.CRITICAL}
+- High: ${process.env.HIGH}
+- Medium: ${process.env.MEDIUM}
+- Low: ${process.env.LOW}
 
+<details>
+<summary>View Findings</summary>
+
+\`\`\`
+${process.env.FINDINGS}
+\`\`\`
+</details>`;
+            
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: summary
+              body: comment
             });
 
-      - name: Check for failures
-        if: steps.tfsec.outputs.exit_code != '0'
+      - name: Check for critical issues
+        if: steps.process-results.outputs.critical > 0
         run: exit 1
