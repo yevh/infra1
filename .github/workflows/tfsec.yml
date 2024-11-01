@@ -14,40 +14,41 @@ jobs:
   tfsec:
     name: Run tfsec Security Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 10
 
     steps:
+      # 1. Checkout the repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 2. Install tfsec
       - name: Install tfsec
-        shell: bash
+        shell: bash {0}
         run: |
-          TFSEC_VERSION="v1.0.3"
-          TFSEC_SHA256="b466648d6e39e7c75324f25d83891162a721f2d6"
-          
           mkdir -p $HOME/.local/bin
-          curl -sSfL "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64" -o $HOME/.local/bin/tfsec
-          chmod +x $HOME/.local/bin/tfsec
-          
-          echo "${TFSEC_SHA256} $HOME/.local/bin/tfsec" | sha256sum -c -
-          
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash -s -- -b $HOME/.local/bin
+
+      # 3. Add tfsec to PATH
       - name: Add tfsec to PATH
-        shell: bash
+        shell: bash {0}
         run: |
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      # 4. Run tfsec and save output
       - name: Run tfsec
         id: tfsec
         continue-on-error: true
-        shell: bash
+        shell: bash {0}
         run: |
-          tfsec . --format json | jq 'del(.results[].location.source_code)' > tfsec_output.json
+          # Run tfsec and save output to a file in JSON format
+          tfsec . --format json > tfsec_output.json
+          # Display the output in the logs for detailed findings
+          cat tfsec_output.json
 
-      - name: Check and Prepare Summary
+      # 5. Check for Issues and Prepare Summary
+      - name: Check for Issues and Prepare Summary
         if: always()
         id: check
-        shell: bash
+        shell: bash {0}
         run: |
           set +e  # Continue script even if a command fails
 
@@ -60,40 +61,54 @@ jobs:
             TOTAL_ISSUES=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
 
             if [ "$TOTAL_ISSUES" -gt 0 ]; then
+              # Construct the Markdown summary for issues found
               SUMMARY="🚨 **Issues found!**
               **Total issues:** $TOTAL_ISSUES (🔴 Critical: $CRITICAL_COUNT, 🟣 High: $HIGH_COUNT, 🟡 Medium: $MEDIUM_COUNT, 🟢 Low: $LOW_COUNT)"
-
+              
+              # Set the summary as an output variable
               echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
               echo "$SUMMARY" >> $GITHUB_OUTPUT
               echo "EOF" >> $GITHUB_OUTPUT
             else
+              # Construct the Markdown summary for no issues found
               SUMMARY="✅ **No security issues found!**"
-
+              
+              # Set the summary as an output variable
               echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
               echo "$SUMMARY" >> $GITHUB_OUTPUT
               echo "EOF" >> $GITHUB_OUTPUT
             fi
 
+            # Determine if the job should fail
             if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
               echo "issues_found=true" >> $GITHUB_OUTPUT
             else
               echo "issues_found=false" >> $GITHUB_OUTPUT
             fi
           else
+            # Handle missing tfsec_output.json
             SUMMARY="⚠️ **tfsec output not found.**"
-
+            
+            # Set the summary as an output variable
             echo "findings_summary<<EOF" >> $GITHUB_OUTPUT
             echo "$SUMMARY" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
 
+            # Indicate no issues found due to missing output
             echo "issues_found=false" >> $GITHUB_OUTPUT
           fi
 
+          # Notify in logs if the PR is from a fork
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "Note: Cannot post findings summary as a comment because the PR is from a fork."
+          fi
+
+      # 6. Post Comment to PR
       - name: Comment Findings Summary on PR
         if: >
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
-        uses: peter-evans/create-or-update-comment@b466648d6e39e7c75324f25d83891162a721f2d6 #v1.0.3
+        uses: peter-evans/create-or-update-comment@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -101,9 +116,10 @@ jobs:
           body: |
             ${{ steps.check.outputs.findings_summary }}
 
-      - name: Detailed Findings
+      # 7. Print Detailed Findings to Logs
+      - name: Print Detailed Findings
         if: always()
-        shell: bash
+        shell: bash {0}
         run: |
           if [ -f tfsec_output.json ]; then
             echo "## Detailed Findings"
@@ -112,6 +128,7 @@ jobs:
             echo "tfsec_output.json not found. No detailed findings to display."
           fi
 
-      - name: Fail - Critical or High Issues Found
+      # 8. Fail the Job if Critical or High Issues Found
+      - name: Fail Job if Critical or High Issues Found
         if: steps.check.outputs.issues_found == 'true'
         run: exit 1
