@@ -4,7 +4,7 @@
 [![GitHub release](https://img.shields.io/github/release/tenable/KaiMonkey)](https://github.com/tenable/kaimonkey)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/tenable/KaiMonkey/pulls)
 
-KaiMonkey provides vulnerable infrastructure as code (IaC) to help explore and understand common cloud security threats exposed via IaC.
+KaiMonkey provides vulnerable infrastructure as code (IaC) to help explore and understand common cloud security threats exposed via IaC.dsa
 
 ## Introduction
 
@@ -14,7 +14,7 @@ The project can help you get familiar with IaC security issues and verify that y
 
 To learn more about the security risks in KaiMonkey, you can leverage [Terrascan](https://github.com/tenable/terrascan), our open-source tool to detect compliance and security violations before provisioning the infrastructure. You can also use the [Tenable.cs](https://www.tenable.com/products/tenable-cs/evaluate) platform for an experience that extends beyond the command line with a SaaS console and pre-built integrations into your source code repositories, ticketing systems, CI/CD pipelines, etc.
 
-## Where to get help
+## Where to get help 
 
 * To learn more about Terrascan's features and capabilities, see the documentation portal: https://runterrascan.io
 
