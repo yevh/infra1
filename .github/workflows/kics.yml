@@ -22,7 +22,4 @@ jobs:
       with:
         path: "./"
         token: ${{ secrets.GITHUB_TOKEN }}
-        fail_on: high,medium
-        output_path: myResults/
-        ignore_on_exit: results
         enable_comments: true
